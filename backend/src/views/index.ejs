@@ -5,20 +5,405 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title><%= title %></title>
     <style>
+      :root {
+        --primary: #1971c2;
+        --border: #1e1e1e;
+        --bg: #fdf8f6;
+        --text: #1e1e1e;
+      }
       body {
         font-family: Arial, sans-serif;
-        margin: 2rem;
+        background-color: var(--bg);
+        color: var(--text);
+        margin: 0;
+        display: flex;
+        justify-content: center;
       }
-      code {
-        background: #f4f4f4;
-        padding: 0.2rem 0.4rem;
+      .app-container {
+        width: 100%;
+        max-width: 400px;
+        border: 2px solid var(--border);
+        border-radius: 12px;
+        min-height: 90vh;
+        margin: 20px 0;
+        padding: 20px;
+        background: white;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
       }
+      .header {
+        text-align: center;
+        font-size: 24px;
+        font-weight: bold;
+        border-bottom: 2px solid var(--border);
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      button {
+        background-color: var(--primary);
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 4px;
+        cursor: pointer;
+        width: 100%;
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      button:hover { background-color: #155b9c; }
+      
+      /* Match UI */
+      .scoreboard {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 20px;
+      }
+      .score-box {
+        background: #a5d8ff;
+        padding: 10px;
+        border-radius: 8px;
+        text-align: center;
+        flex: 1;
+        margin: 0 5px;
+        border: 2px solid var(--border);
+      }
+      .score-box:last-child {
+        background: #b2f2bb;
+      }
+      .main-score {
+        font-size: 40px;
+        text-align: center;
+        font-weight: bold;
+        margin: 20px 0;
+      }
+      .over-balls {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 20px;
+        min-height: 40px;
+      }
+      .ball-circle {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        background: #eee;
+      }
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-top: 20px;
+      }
+      .controls button {
+        margin: 0;
+        font-size: 14px;
+      }
+      .btn-extra { background: #e8590c; }
+      /* UI for previous overs */
+      .previous-overs {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px dashed #ccc;
+        font-size: 14px;
+        max-height: 150px;
+        overflow-y: auto;
+      }
+      .past-over-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        padding: 5px 10px;
+        background: #f8f9fa;
+        border-radius: 6px;
+      }
+      .past-over-balls {
+        display: flex;
+        gap: 5px;
+      }
+      .mini-ball {
+        width: 20px;
+        height: 20px;
+        font-size: 11px;
+        border-radius: 50%;
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        font-weight: bold;
+      }
+      
+      .hidden { display: none; }
     </style>
   </head>
   <body>
-    <h1><%= title %></h1>
-    <p>Server is running.</p>
-    <p>Health: <code>/health</code></p>
-    <p>API base: <code>/api</code></p>
+    <div class="app-container">
+      <div class="header">GullyCricks</div>
+      
+      <!-- CREATE MATCH SECTION -->
+      <div id="create-match-section">
+        <h3>Create a New Match</h3>
+        <div class="form-group">
+          <label>Your Name (Admin)</label>
+          <input type="text" id="displayName" value="John Doe" />
+        </div>
+        <div class="form-group">
+          <label>Total Overs</label>
+          <input type="number" id="overs" value="5" />
+        </div>
+        <div class="form-group">
+          <label>Total Players</label>
+          <input type="number" id="players" value="11" />
+        </div>
+        <div class="form-group">
+          <label>Wide Runs</label>
+          <input type="number" id="wideRuns" value="1" />
+        </div>
+        <div class="form-group">
+          <label>No Ball Runs</label>
+          <input type="number" id="noBallRuns" value="1" />
+        </div>
+        <button onclick="createMatch()">Start Match</button>
+      </div>
+
+      <!-- MATCH INTERFACE SECTION -->
+      <div id="match-interface-section" class="hidden">
+        <div class="scoreboard">
+          <div class="score-box">
+            <div style="color: #e8590c; font-size: 12px; font-weight:bold;">Total Overs</div>
+            <div id="ui-total-overs" style="font-size: 18px; font-weight:bold; color:#1971c2">5</div>
+          </div>
+          <div class="score-box">
+            <div style="color: #e03131; font-size: 12px; font-weight:bold;">Total Players</div>
+            <div id="ui-total-players" style="font-size: 18px; font-weight:bold;">11</div>
+          </div>
+        </div>
+
+        <div class="main-score">
+          <span id="ui-runs">0</span> / <span id="ui-wickets">0</span>
+          <div style="font-size: 16px; color: #555;">(<span id="ui-overs">0</span>.<span id="ui-balls">0</span>)</div>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 5px; font-weight: bold;">Current Over</div>
+        <div class="over-balls" id="ui-current-over">
+          <!-- Ball circles will go here -->
+        </div>
+
+        <!-- PREVIOUS OVERS SECTION -->
+        <div id="ui-previous-overs" class="previous-overs">
+          <!-- Past over rows appended here -->
+        </div>
+
+        <div class="controls">
+          <button onclick="addEvent('dot')">0 / Dot</button>
+          <button onclick="addEvent('run', 1)">1 Run</button>
+          <button onclick="addEvent('run', 2)">2 Runs</button>
+          <button onclick="addEvent('run', 3)">3 Runs</button>
+          <button onclick="addEvent('run', 4)">4 Runs</button>
+          <button onclick="addEvent('run', 6)">6 Runs</button>
+          <button class="btn-extra" onclick="addEvent('wide')">Wide</button>
+          <button class="btn-extra" onclick="addEvent('noBall')">No Ball</button>
+          <button class="btn-wicket" onclick="addEvent('wicket')">Wicket</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let currentMatchId = localStorage.getItem("currentMatchId");
+      let visitorId = localStorage.getItem("visitorId");
+
+      // Generate Cryptographically secure UUID or fallback
+      if (!visitorId) {
+        visitorId = (window.crypto && crypto.randomUUID) 
+          ? crypto.randomUUID() 
+          : "user-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem("visitorId", visitorId);
+      }
+
+      // Check on load if the user is already inside a match
+      window.addEventListener("DOMContentLoaded", async () => {
+        if (currentMatchId) {
+          try {
+            // Find the current match using our Get Matches endpoint
+            const res = await fetch("/api/V1/matches");
+            const matches = await res.json();
+            const ongoingMatch = matches.find(m => m._id === currentMatchId);
+            
+            if (ongoingMatch) {
+              document.getElementById("create-match-section").classList.add("hidden");
+              document.getElementById("match-interface-section").classList.remove("hidden");
+              updateUI(ongoingMatch);
+            } else {
+              localStorage.removeItem("currentMatchId"); // Match might be deleted
+            }
+          } catch (e) {
+            console.error("Error checking active match session", e);
+          }
+        }
+      });
+
+      async function createMatch() {
+        const displayName = document.getElementById("displayName").value;
+        const overs = parseInt(document.getElementById("overs").value);
+        const playersPerTeam = parseInt(document.getElementById("players").value);
+        const wideRuns = parseInt(document.getElementById("wideRuns").value);
+        const noBallRuns = parseInt(document.getElementById("noBallRuns").value);
+
+        const payload = {
+          visitorId,
+          displayName,
+          settings: { overs, playersPerTeam, wideRuns, noBallRuns }
+        };
+
+        try {
+          const res = await fetch("/api/V1/matches", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const match = await res.json();
+          
+          currentMatchId = match._id;
+          localStorage.setItem("currentMatchId", currentMatchId); // Save match tracking info
+          
+          document.getElementById("create-match-section").classList.add("hidden");
+          document.getElementById("match-interface-section").classList.remove("hidden");
+          
+          updateUI(match);
+        } catch (e) {
+          console.error(e);
+          alert("Error creating match");
+        }
+      }
+
+      async function addEvent(type, runs = 0) {
+        if (!currentMatchId) return;
+
+        const payload = {
+          visitorId,
+          event: { type, runs }
+        };
+
+        try {
+          const res = await fetch(`/api/V1/matches/${currentMatchId}/score`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          const match = await res.json();
+          updateUI(match);
+        } catch (e) {
+          console.error(e);
+          alert("Error updating score");
+        }
+      }
+
+      function updateUI(match) {
+        document.getElementById("ui-total-overs").innerText = match.settings.overs;
+        document.getElementById("ui-total-players").innerText = match.settings.playersPerTeam || match.settings.players;
+        
+        document.getElementById("ui-runs").innerText = match.score.runs;
+        document.getElementById("ui-wickets").innerText = match.score.wickets;
+        document.getElementById("ui-overs").innerText = match.score.overs;
+        document.getElementById("ui-balls").innerText = match.score.balls;
+
+        const overContainer = document.getElementById("ui-current-over");
+        overContainer.innerHTML = ""; // Clear existing
+        
+        if (match.score.currentOverBalls && match.score.currentOverBalls.length > 0) {
+          match.score.currentOverBalls.forEach(ballStr => {
+            const ballDiv = document.createElement("div");
+            ballDiv.className = "ball-circle";
+            ballDiv.innerText = ballStr;
+            
+            // Give wickets a red text color
+            if (ballStr === "W") ballDiv.style.color = "#e03131"; 
+            if (ballStr === "Wd" || ballStr === "Nb") ballDiv.style.color = "#e8590c";
+            if (ballStr === "4" || ballStr === "6") ballDiv.style.color = "#1971c2";
+            
+            overContainer.appendChild(ballDiv);
+          });
+        } else {
+          overContainer.innerHTML = '<span style="color:#aaa; font-style:italic">Start of over</span>';
+        }
+
+        // Cache history logic for Fast Access Previous Overs view
+        if (match.ballHistory) {
+          // Store it locally for cache as requested
+          localStorage.setItem(`history_${match._id}`, JSON.stringify(match.ballHistory));
+          renderPreviousOvers(match.ballHistory);
+        }
+      }
+
+      function renderPreviousOvers(ballHistory) {
+        const historyContainer = document.getElementById("ui-previous-overs");
+        historyContainer.innerHTML = ""; // Clear
+
+        // We will manually group the historic balls into overs.
+        let overGroups = [];
+        let currentGroup = [];
+        let validBalls = 0;
+
+        ballHistory.forEach(ball => {
+          let label = "0";
+          if (ball.type === "wicket") label = "W";
+          else if (ball.type === "wide") label = "Wd";
+          else if (ball.type === "noBall") label = "Nb";
+          else if (ball.type === "run") label = ball.runs.toString();
+
+          currentGroup.push(label);
+
+          if (ball.countedBall) validBalls += 1;
+
+          if (validBalls > 0 && validBalls % 6 === 0 && ball.countedBall) {
+            overGroups.push([...currentGroup]);
+            currentGroup = []; // Reset for next over
+          }
+        });
+
+        // Current group now holds the live over, everything in overGroups is completed past overs.
+        if (overGroups.length === 0) {
+           historyContainer.innerHTML = '<div style="text-align:center; color:#888;">No completed overs yet</div>';
+           return;
+        }
+
+        // Reverse to show latest past over first at the top
+        overGroups.reverse().forEach((group, index) => {
+           const actualOverNum = overGroups.length - index;
+           const row = document.createElement("div");
+           row.className = "past-over-row";
+           
+           let ballsHtml = group.map(b => `<div class="mini-ball" style="color: ${b==='W'?'#e03131':(b==='Wd'||b==='Nb'?'#e8590c':((b==='4'||b==='6')?'#1971c2':'#333'))}">${b}</div>`).join('');
+
+           row.innerHTML = `
+             <div style="font-weight:bold; color:#555;">Over ${actualOverNum}</div>
+             <div class="past-over-balls">${ballsHtml}</div>
+           `;
+           historyContainer.appendChild(row);
+        });
+      }
+    </script>
   </body>
 </html>
