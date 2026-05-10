@@ -20,3 +20,16 @@ export async function getMatches(_req: Request, res: Response): Promise<Response
     return res.status(500).json({ message });
   }
 }
+
+export async function updateScore(req: Request, res: Response): Promise<Response> {
+  try { 
+    const matchId = req.params.matchId as string;
+    const data = req.body;
+    
+    const updatedMatch = await matchService.updateMatch(matchId, data);
+    return res.json(updatedMatch);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to update score";
+    return res.status(400).json({ message });
+  }
+}
