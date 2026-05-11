@@ -84,12 +84,12 @@ export async function updateMatch(matchId: string, data: any) {
   if (event.type === "wide") {
     newBall.runs = event.runs || match.settings!.wideRuns || 1;
     newBall.countedBall = false;
-    newBall.isExtra = true;
+    newBall.isExtra = match.settings!.wideRuns===1 ? true : false;
     newBall.ball = score.balls; 
   } else if (event.type === "noBall") {
     newBall.runs = event.runs || match.settings!.noBallRuns || 1;
     newBall.countedBall = false;
-    newBall.isExtra = true;
+    newBall.isExtra =match.settings!.noBallRuns ==1 ? true : false;
     newBall.ball = score.balls;
   } else if (event.type === "run") {
     newBall.countedBall = true;
