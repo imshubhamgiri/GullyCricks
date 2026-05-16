@@ -1,6 +1,24 @@
 import mongoose from "mongoose";
 
-const BallEventSchema = new mongoose.Schema(
+// Type definitions
+export interface IBallEvent {
+  type: "run" | "wide" | "noBall" | "wicket" | "dot";
+  runs?: number;
+  countedBall?: boolean;
+  isExtra?: boolean;
+  over?: number;
+  ball?: number;
+  timestamp?: Date;
+}
+
+export interface ISettings {
+  overs: number;
+  players: number;
+  wideRuns: number;
+  noBallRuns: number;
+}
+
+export const BallEventSchema = new mongoose.Schema(
   {
     type: {
       type: String,

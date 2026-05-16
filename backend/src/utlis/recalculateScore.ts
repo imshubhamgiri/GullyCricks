@@ -1,5 +1,6 @@
+import {  IBallEvent, ISettings } from '../models/Match.js';
 
-export default function recalculateScore(ballHistory: any[], settings: any) {
+export default function recalculateScore(ballHistory: IBallEvent[], settings: ISettings) {
   let runs = 0;
   let wickets = 0;
   let validBalls = 0;
@@ -11,9 +12,9 @@ export default function recalculateScore(ballHistory: any[], settings: any) {
       validBalls += 1;
       currentOverBalls.push("W");
     } else if (ball.type === "run") {
-      runs += ball.runs;
+      runs += ball.runs ?? 0;
       validBalls += 1;
-      currentOverBalls.push(ball.runs.toString());
+      currentOverBalls.push((ball.runs ?? 0).toString());
     } else if (ball.type === "dot") {
       validBalls += 1;
       currentOverBalls.push("0");
