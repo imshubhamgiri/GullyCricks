@@ -6,8 +6,8 @@ export interface IBallEvent {
   runs?: number;
   countedBall?: boolean;
   isExtra?: boolean;
-  over?: number;
-  ball?: number;
+  over?: number | null;
+  ball?: number | null;
   timestamp?: Date;
 }
 
@@ -86,10 +86,11 @@ const MatchSchema = new mongoose.Schema(
     users: [UserSchema],
 
     settings: {
-      overs: {
-        type: Number,
-        default: 5,
-      },
+    type: {
+        overs: {
+          type: Number,
+          default: 5,
+        },
 
       players: {
         type: Number,
@@ -105,6 +106,8 @@ const MatchSchema = new mongoose.Schema(
         type: Number,
         default: 1,
       },
+    },
+      required: true,
     },
 
     score: {
