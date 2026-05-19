@@ -153,4 +153,9 @@ const MatchSchema = new mongoose.Schema(
   }
 );
 
+// ✅ OPTIMIZED: Add indexes for frequently queried fields
+// This speeds up: findOne({ matchCode }), find({ status })
+MatchSchema.index({ status: 1 });
+MatchSchema.index({ createdAt: -1 });
+
 export default mongoose.model("Match", MatchSchema);
