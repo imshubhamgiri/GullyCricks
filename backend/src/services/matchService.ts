@@ -4,7 +4,7 @@ import recalculateScore from "../utlis/recalculateScore.js";
 
 interface MatchSettings {
   overs: number;
-  playersPerTeam: number;
+  players: number;
   wideRuns: number;
   noBallRuns: number;
 }
@@ -48,8 +48,9 @@ export function createMatch(data: CreateMatchData) {
   return matchRepository.createMatch(newMatchData);
 }
 
-export function getMatches() {
-  return matchRepository.getMatches();
+export function getMatches(limit: number = 20, skip: number = 0) {
+  // ✅ OPTIMIZED: Support pagination with limit
+  return matchRepository.getMatches(limit, skip);
 }
 
 

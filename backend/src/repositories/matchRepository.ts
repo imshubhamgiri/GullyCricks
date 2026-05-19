@@ -4,12 +4,17 @@ export function createMatch(payload: Record<string, unknown>) {
   return Match.create(payload);
 }
 
-export function getMatches() {
-  return Match.find().sort({ createdAt: -1 });
+export function getMatches(limit: number = 20, skip: number = 0) {
+  // ✅ OPTIMIZED: Add limit (don't fetch all matches) + skip for pagination
+  return Match.find()
+    .sort({ createdAt: -1 })
+    .limit(limit)
+    .skip(skip)
+    .lean();
 }
 
 export function getMatchById(id: string) {
-  return Match.findById(id);
+  return Match.findById(id).lean();
 }
 
 export function updateMatch(id: string, updateData: any) {
