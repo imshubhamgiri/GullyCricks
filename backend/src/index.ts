@@ -2,9 +2,27 @@ import "dotenv/config";
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
 import mongoose from "mongoose";
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { setupMatchSocket } from "./socket/matchSocket.js";
 
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 5000;
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+  },
+});
 const MONGO_URI = process.env.MONGO_URI;
+
+// ✅ OPTIMIZED: Dev-only logger
+const logger = (message: string, data?: any) => {
+  if (process.env.NODE_ENV === "development") {
+    console.log(`[SERVER] ${message}`, data || "");
+  }
+};
+
 const HOST = (): string => {
   if (process.env.NODE_ENV === "production") {
     return "0.0.0.0";
@@ -14,23 +32,35 @@ const HOST = (): string => {
 
 async function startServer(): Promise<void> {
   await connectDB(MONGO_URI);
-  const server = app.listen(PORT, HOST(), () => {
-    console.log(`Server is running on port ${PORT} `);
+
+  // Setup match socket handlers (namespace: /matches)
+  setupMatchSocket(io);
+
+  // Default namespace connection (optional - for general events)
+  io.on("connection", (socket) => {
+    logger(`User connected: ${socket.id}`);
+    socket.on("disconnect", () => {
+      logger(`User disconnected: ${socket.id}`);
+    });
+  });
+
+  server.listen(PORT, HOST(), () => {
+    logger(`Server is running on port ${PORT}`);
   });
 
   process.on("SIGINT", async () => {
-    console.log("\nSIGINT received, shutting down gracefully...");
+    logger("SIGINT received, shutting down gracefully...");
     
     // Close all active connections immediately
     server.closeAllConnections();
     
     // Close the server
     server.close(async () => {
-      console.log("Server closed.");
+      logger("Server closed.");
       
       try {
         await mongoose.connection.close();
-        console.log("MongoDB connection closed.");
+        logger("MongoDB connection closed.");
         process.exit(0);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
