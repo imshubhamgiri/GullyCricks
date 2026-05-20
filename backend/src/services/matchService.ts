@@ -8,12 +8,18 @@ interface MatchSettings {
   wideRuns: number;
   noBallRuns: number;
 }
-interface CreateMatchData {
+export interface CreateMatchData {
   visitorId: string;
   displayName: string;
   settings: MatchSettings;
 }
-
+export interface updateMatchData {
+  visitorId: string;
+  event: {
+    type: "run" | "wide" | "noBall" | "wicket" | "dot";
+    runs?: number;
+  };
+}
 export function createMatch(data: CreateMatchData) {
   const newMatchData = {
       matchCode: generateMatchCode(),
@@ -55,7 +61,7 @@ export function getMatches(limit: number = 20, skip: number = 0) {
 
 
 
-export async function updateMatch(matchId: string, data: any) {
+export async function updateMatch(matchId: string, data: updateMatchData) {
   const match = await matchRepository.getMatchById(matchId);
   
   if (!match) {
