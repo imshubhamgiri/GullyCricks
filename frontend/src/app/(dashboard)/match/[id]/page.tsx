@@ -80,9 +80,16 @@ export default function MatchPage() {
     []
   );
   const updateScore = useCallback(
-    (data:any)=>{
-
-    },[]
+    (data: any) => {
+      console.log("Score update received:", data);
+      // ✅ Extract score from the correct path
+      if (data.score) {
+        setScore(data.score.runs || 0);
+        setWickets(data.score.wickets || 0);
+        setOvers(data.score.overs || 0);
+      }
+    },
+    []
   )
 
   /**
@@ -99,6 +106,12 @@ export default function MatchPage() {
         setMatch(matchData);
         setUsers(matchData.users || []);
         setIsAdmin(matchData.isAdmin);
+        // ✅ Load initial score from sessionStorage
+        if (matchData.score) {
+          setScore(matchData.score.runs || 0);
+          setWickets(matchData.score.wickets || 0);
+          setOvers(matchData.score.overs || 0);
+        }
       } catch {
         setError("Error loading match data");
       }
@@ -117,20 +130,19 @@ export default function MatchPage() {
   useEffect(() => {
     if (!socket || !isConnected || !matchId) return;
 
-    // Socket is now connected - register listeners for real-time updates
-    // Register listeners with useCallback references
     socket.on("userJoined", handleUserJoined);
     socket.on("userLeft", handleUserLeft);
     socket.on("userListUpdated", handleUserListUpdated);
-    socket.on("updatedScore", updateScore)
+    socket.on("updatedScore", updateScore);
 
     // Cleanup listeners on unmount
     return () => {
       socket.off("userJoined", handleUserJoined);
       socket.off("userLeft", handleUserLeft);
       socket.off("userListUpdated", handleUserListUpdated);
+      socket.off("updatedScore", updateScore);
     };
-  }, [socket, isConnected, matchId, handleUserJoined, handleUserLeft, handleUserListUpdated]);
+  }, [socket, isConnected, matchId, handleUserJoined, handleUserLeft, handleUserListUpdated, updateScore]);
 
   //working copy button
   const [copied, setCopied] = useState(false);
@@ -158,6 +170,39 @@ export default function MatchPage() {
 
     }
   };
+
+  const handleScoreUpdate = (type: string, runs: number): void => {
+    const visitorId = localStorage.getItem("visitorId") || "";
+    const payload = {
+      visitorId,
+      event: { type, runs }
+    };
+
+    try {
+      if (socket && isConnected) {
+        // ✅ Emit with callback to get acknowledgment
+        socket.emit("updateMatch", matchId, payload, (response: any) => {
+          if (response.success) {
+            console.log("✅ Score update confirmed by server", response);
+            const updatedScore = response.updatedMatch.score;
+            setScore(updatedScore.runs || 0);
+            setWickets(updatedScore.wickets || 0);
+            setOvers(updatedScore.overs || 0);
+
+          } else {
+            setError(`Update failed: ${response.error}`);
+            console.error("Score update failed:", response.error);
+          }
+        });
+        console.log("Score update emitted:", payload, "for match:", matchId);
+      } else {
+        setError("Cannot update score: Not connected to server");
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unknown error");
+      console.error("Error emitting score update:", error);
+    }
+  }
 
   if (loading) {
     return (
@@ -259,19 +304,24 @@ export default function MatchPage() {
                 <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-6">
                   <h3 className="text-white font-bold mb-4">Update Score</h3>
                   <div className="grid grid-cols-3 gap-3">
-                    <button className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-lg transition">
+                    <button onClick={() => handleScoreUpdate("run", 1)}
+                     className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-lg transition">
                       +1 Run
                     </button>
-                    <button className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg transition">
+                    <button onClick={() => handleScoreUpdate("run", 2)}
+                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg transition">
                       +2 Runs
                     </button>
-                    <button className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg transition">
+                    <button onClick={() => handleScoreUpdate("run", 3)}
+                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg transition">
                       +3 Runs
                     </button>
-                    <button className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition col-span-2">
+                    <button onClick={() => handleScoreUpdate("wicket", 0)}
+                     className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition col-span-2">
                       Wicket
                     </button>
-                    <button className="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-lg transition">
+                    <button onClick={() => handleScoreUpdate("reset", 0)}
+                     className="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-lg transition">
                       Reset
                     </button>
                   </div>
