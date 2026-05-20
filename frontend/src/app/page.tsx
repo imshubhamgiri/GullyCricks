@@ -38,9 +38,27 @@ export default function Home() {
    * Emits: createMatch event to Socket.io
    * Response callback sets matchCode and navigates to match page
    */
+ const createVisitorId = () => {
+    let visitorId = localStorage.getItem("visitorId");
+    if (!visitorId) {
+      visitorId = (window.crypto && crypto.randomUUID) 
+        ? crypto.randomUUID() 
+        : "user-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
+      localStorage.setItem("visitorId", visitorId);
+    }
+    return visitorId;
+ }
+
   const handleCreateMatch = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+    let visitorId = createVisitorId();
+    if (!visitorId) {
+        visitorId = (window.crypto && crypto.randomUUID) 
+          ? crypto.randomUUID() 
+          : "user-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem("visitorId", visitorId);
+      }
 
     if (!adminName.trim()) {
       setError("Please enter your name");
@@ -51,21 +69,18 @@ export default function Home() {
       setError("Not connected to server. Please refresh the page.");
       return;
     }
+      const payload = {
+          visitorId,
+          displayName: adminName.trim(),
+          settings: { overs, players, wideRuns, noBallRuns }
+        };
 
     setLoading(true);
 
     // Emit createMatch event to backend
     socket?.emit(
       "createMatch",
-      { 
-        adminName: adminName.trim(),
-        settings: {
-          overs,
-          players,
-          wideRuns,
-          noBallRuns,
-        }
-      },
+       payload,
       (response: any) => {
         setLoading(false);
 
@@ -77,7 +92,7 @@ export default function Home() {
             createdBy: adminName,
             users: [
               {
-                visitorId: socket?.id,
+                visitorId,
                 displayName: adminName,
                 role: "admin",
               },
@@ -89,6 +104,7 @@ export default function Home() {
               wideRuns,
               noBallRuns,
             },
+            score: response.score, // ✅ Include initial score
           };
           sessionStorage.setItem(
             `match-${response.matchId}`,
@@ -109,9 +125,10 @@ export default function Home() {
    * Emits: joinMatch event to Socket.io
    * Response callback contains match data
    */
-  const handleJoinMatch = async (e: React.FormEvent) => {
+  const handleJoinMatch = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
+      let visitorId = createVisitorId();
 
     if (!matchCode.trim() || !playerName.trim()) {
       setError("Please enter match code and your name");
@@ -129,6 +146,7 @@ export default function Home() {
     socket?.emit(
       "joinMatch",
       {
+        visitorId: createVisitorId(),
         matchCode: matchCode.trim().toUpperCase(),
         playerName: playerName.trim(),
       },
@@ -139,11 +157,13 @@ export default function Home() {
           // Match joined successfully
           // Store match data in sessionStorage for the match page
           const matchData = {
+            visitorId,
             matchCode: response.match.matchCode,
             createdBy: response.match.createdBy,
             users: response.match.users,
             isAdmin: false,
             settings: response.match.settings,
+            score: response.match.score, // ✅ Include current score from match
           };
           sessionStorage.setItem(
             `match-${response.matchId}`,
