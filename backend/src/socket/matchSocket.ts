@@ -2,7 +2,8 @@ import { Server, Socket } from "socket.io";
 import Match from "../models/Match.js";
 import {updateMatch} from "../services/matchService.js";
 import { generateMatchCode } from "../utlis/generateMatchCode.js";
-import {ISettings} from "../models/Match.js";
+import{ CreateMatchData , updateMatchData} from "../services/matchService.js";
+import * as matchService from "../services/matchService.js";
 
 /**
  * SOCKET.IO MATCH NAMESPACE HANDLER
@@ -54,54 +55,38 @@ export function setupMatchSocket(io: Server): void {
      * - Invalid admin name
      * - Database error
      */
-    socket.on("createMatch", async (data: { adminName: string; settings: ISettings }, callback) => {
+    socket.on("createMatch", async (data: CreateMatchData, callback) => {
       try {
         // Validate input
-        if (!data.adminName || data.adminName.trim().length === 0) {
+        if (!data.displayName || data.displayName.trim().length === 0) {
           return callback({
             success: false,
-            error: "Admin name is required",
+            error: "Display name is required",
           });
         }
 
         // Generate unique match code
-        const matchCode = generateMatchCode();
-
-        // Create match in database
-        const newMatch = new Match({
-          matchCode,
-          createdBy: socket.id,
-          admins: [data.adminName],
-          users: [
-            {
-              visitorId: socket.id,
-              displayName: data.adminName,
-              role: "admin",
-            },
-            
-          ],
-          settings: data.settings
-        });
-
-        await newMatch.save();
+        const newMatch = await matchService.createMatch(data);
 
         // Add socket to match room (so this user only gets updates for THIS match)
         // Room name format: match-ABC123
-        const roomName = `match-${matchCode}`;
+        const roomName = `match-${newMatch.matchCode}`;
         socket.join(roomName);
 
         // Store match code in socket so we know which match this user is in
-        socket.data.matchCode = matchCode;
-        socket.data.displayName = data.adminName;
+        socket.data.adminCode = data.visitorId;
+        socket.data.matchCode = newMatch.matchCode;
+        socket.data.displayName = data.displayName;
         socket.data.role = "admin";
 
-        logger(`Match created: ${matchCode} by ${data.adminName}`);
+        logger(`Match created: ${newMatch.matchCode} by ${data.displayName}`);
 
-        // Send success response with match details to the creator
+        // Send success response with match details to the creator (including initial score)
         callback({
           success: true,
-          matchCode,
+          matchCode: newMatch.matchCode,
           matchId: newMatch._id,
+          score: newMatch.score, // ✅ Include initial score
           message: "Match created successfully",
         });
 
@@ -138,7 +123,7 @@ export function setupMatchSocket(io: Server): void {
      * - Match not found
      * - Invalid player name
      */
-    socket.on("joinMatch", async (data: { matchCode: string; playerName: string }, callback) => {
+    socket.on("joinMatch", async (data: {visitorId: string; matchCode: string; playerName: string }, callback) => {
       try {
         // Validate inputs
         if (!data.matchCode || !data.playerName || data.playerName.trim().length === 0) {
@@ -162,7 +147,7 @@ export function setupMatchSocket(io: Server): void {
 
         // Check if user already in this match
         const alreadyInMatch = match.users.some(
-          (user) => user.visitorId === socket.id
+          (user) => user.visitorId === data.visitorId
         );
 
         if (alreadyInMatch) {
@@ -174,7 +159,7 @@ export function setupMatchSocket(io: Server): void {
 
         // Add user to match
         match.users.push({
-          visitorId: socket.id,
+          visitorId: data.visitorId,
           displayName: data.playerName,
           role: "viewer", // New joiners are viewers, not admins
         });
@@ -192,7 +177,7 @@ export function setupMatchSocket(io: Server): void {
 
         logger(`${data.playerName} joined match: ${data.matchCode}`);
 
-        // Send success response with full match data
+        // Send success response with full match data INCLUDING current score
         callback({
           success: true,
           matchId: match._id,
@@ -201,13 +186,14 @@ export function setupMatchSocket(io: Server): void {
             createdBy: match.createdBy,
             users: match.users,
             settings: match.settings,
+            score: match.score // ✅ Include current score so joining user sees it
           },
         });
 
-        // Notify ALL users in this room that someone joined
+        // Notify ALL users in this room that someone joined (includes admin)
         matchNamespace.to(roomName).emit("userJoined", {
           newUser: {
-            visitorId: socket.id,
+            visitorId: data.visitorId,
             displayName: data.playerName,
             role: "viewer",
           },
@@ -225,13 +211,47 @@ export function setupMatchSocket(io: Server): void {
 
 
     //MatchUpdate socket
-    socket.on("updateMatch",(matchId: string, data: any , callback)=>{
-      const updatedMatch =  updateMatch(matchId, data);
-
-       const roomName = `match-${matchId.toUpperCase()}`;
-      matchNamespace.to(roomName).emit("updatedScore",{
-        updatedMatch
-      })
+    socket.on("updateMatch", async (matchId: string, data: updateMatchData, callback) => {
+      try {
+        
+        // ✅ AWAIT the async function
+        const updatedMatch = await updateMatch(matchId, data);
+        
+        // Get the match code for room name
+        const match = await Match.findById(matchId);
+        if (!match) {
+          callback({
+            success: false,
+            error: "Match not found"
+          });
+          return;
+        }
+        
+        const roomName = `match-${match.matchCode}`;
+        
+        // ✅ Emit to all users in the match room
+        matchNamespace.to(roomName).emit("updatedScore", {
+          updatedMatch,
+          score: updatedMatch?.score  // Extract score for easier access
+        });
+        
+        // ✅ Send callback to acknowledge the update
+        callback({
+          success: true,
+          message: "Score updated successfully",
+          updatedMatch
+        });
+        
+        logger(`Match score updated: ${matchId}`);
+      } catch (error) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("[MATCH] Update match error:", error);
+        }
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Failed to update score"
+        });
+      }
     })
     /**
      * EVENT: Leave Match
