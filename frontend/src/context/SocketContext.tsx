@@ -62,10 +62,18 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         }
       }, 5000);
 
-      // Connection event
+      // Connection event (fires on initial connect AND after network restore)
       newSocket.on("connect", () => {
         clearTimeout(connectionTimeout);
         logger("✅ Connected", newSocket.id);
+        
+        // ✅ Handle room rejoin for BOTH fresh connections and reconnections
+        const visitorId = localStorage.getItem("visitorId");
+        if (visitorId) {
+          logger(`[RECONNECT] Emitting reconnectRoom for visitorId: ${visitorId}`);
+          newSocket.emit("reconnectRoom", { visitorId });
+        }
+        
         setIsConnected(true);
         setError(null);
       });
@@ -81,12 +89,8 @@ export function SocketProvider({ children }: { children: ReactNode }) {
         logger("🔄 Attempting to reconnect...");
       });
 
-      // Reconnection success
-      newSocket.on("reconnect", () => {
-        logger("✅ Reconnected successfully!");
-        setIsConnected(true);
-        setError(null);
-      });
+      // Note: reconnectRoom is now handled in the "connect" event above,
+      // which fires on both initial connections and network reconnections
 
       // Connection error
       newSocket.on("connect_error", (err: any) => {
