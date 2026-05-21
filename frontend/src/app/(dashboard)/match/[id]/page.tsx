@@ -92,10 +92,33 @@ export default function MatchPage() {
     []
   )
 
+  //  Handle state update from reconnection
+  const handleMatchStateUpdate = useCallback(
+    (data: any) => {
+      console.log("Match state update received:", data);
+      setUsers(data.users || []);
+      if (data.score) {
+        setScore(data.score.runs || 0);
+        setWickets(data.score.wickets || 0);
+        setOvers(data.score.overs || 0);
+      }
+      // Update sessionStorage with fresh data
+      sessionStorage.setItem(`match-${matchId}`, JSON.stringify({
+        matchCode: data.matchCode,
+        createdBy: data.createdBy,
+        users: data.users,
+        settings: data.settings,
+        score: data.score,
+        isAdmin: data?.isAdmin,
+      }));
+    },
+    [matchId]
+  )
+
   /**
    * Effect 1: Load match data from sessionStorage IMMEDIATELY
    * This should not wait for socket connection
-   * ✅ OPTIMIZED: Load data on mount, don't wait for socket
+   *  OPTIMIZED: Load data on mount, don't wait for socket
    */
   useEffect(() => {
     // Load match data from sessionStorage immediately
@@ -106,7 +129,7 @@ export default function MatchPage() {
         setMatch(matchData);
         setUsers(matchData.users || []);
         setIsAdmin(matchData.isAdmin);
-        // ✅ Load initial score from sessionStorage
+        //  Load initial score from sessionStorage
         if (matchData.score) {
           setScore(matchData.score.runs || 0);
           setWickets(matchData.score.wickets || 0);
@@ -134,6 +157,7 @@ export default function MatchPage() {
     socket.on("userLeft", handleUserLeft);
     socket.on("userListUpdated", handleUserListUpdated);
     socket.on("updatedScore", updateScore);
+    socket.on("matchStateUpdate", handleMatchStateUpdate);  // ✅ Add this
 
     // Cleanup listeners on unmount
     return () => {
@@ -141,8 +165,9 @@ export default function MatchPage() {
       socket.off("userLeft", handleUserLeft);
       socket.off("userListUpdated", handleUserListUpdated);
       socket.off("updatedScore", updateScore);
+      socket.off("matchStateUpdate", handleMatchStateUpdate);  // ✅ Clean up this
     };
-  }, [socket, isConnected, matchId, handleUserJoined, handleUserLeft, handleUserListUpdated, updateScore]);
+  }, [socket, isConnected, matchId, handleUserJoined, handleUserLeft, handleUserListUpdated, updateScore, handleMatchStateUpdate]);
 
   //working copy button
   const [copied, setCopied] = useState(false);
