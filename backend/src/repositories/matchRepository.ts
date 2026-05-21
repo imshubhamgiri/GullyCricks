@@ -17,6 +17,10 @@ export function getMatchById(id: string) {
   return Match.findById(id).lean();
 }
 
+export function getMatchByCode(code: string) {
+  return Match.findOne({ matchCode: code }).lean();
+}
+
 export function updateMatch(id: string, updateData: any) {
   return Match.findByIdAndUpdate(id, updateData, { new: true });
 }
