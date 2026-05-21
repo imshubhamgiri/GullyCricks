@@ -52,13 +52,7 @@ export default function Home() {
   const handleCreateMatch = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
-    let visitorId = createVisitorId();
-    if (!visitorId) {
-        visitorId = (window.crypto && crypto.randomUUID) 
-          ? crypto.randomUUID() 
-          : "user-" + Date.now() + "-" + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem("visitorId", visitorId);
-      }
+    const visitorId = createVisitorId();  //  createVisitorId handles localStorage
 
     if (!adminName.trim()) {
       setError("Please enter your name");
