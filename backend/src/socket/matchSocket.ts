@@ -20,7 +20,7 @@ import * as matchService from "../services/matchService.js";
  * - Broadcasting: Send to specific room users
  */
 
-// ✅ OPTIMIZED: Dev-only logger to avoid I/O overhead in production
+//  OPTIMIZED: Dev-only logger to avoid I/O overhead in production
 const logger = (message: string, data?: any) => {
   if (process.env.NODE_ENV === "development") {
     console.log(`[MATCH] ${message}`, data || "");
@@ -74,6 +74,7 @@ export function setupMatchSocket(io: Server): void {
         socket.join(roomName);
 
         // Store match code in socket so we know which match this user is in
+        socket.data.visitorId = data.visitorId;  //  Store visitorId
         socket.data.adminCode = data.visitorId;
         socket.data.matchCode = newMatch.matchCode;
         socket.data.displayName = data.displayName;
@@ -86,7 +87,7 @@ export function setupMatchSocket(io: Server): void {
           success: true,
           matchCode: newMatch.matchCode,
           matchId: newMatch._id,
-          score: newMatch.score, // ✅ Include initial score
+          score: newMatch.score, //  Include initial score
           message: "Match created successfully",
         });
 
@@ -171,6 +172,7 @@ export function setupMatchSocket(io: Server): void {
         socket.join(roomName);
 
         // Store match info in socket
+        socket.data.visitorId = data.visitorId;  //  Store visitorId
         socket.data.matchCode = data.matchCode.toUpperCase();
         socket.data.displayName = data.playerName;
         socket.data.role = "viewer";
@@ -186,7 +188,7 @@ export function setupMatchSocket(io: Server): void {
             createdBy: match.createdBy,
             users: match.users,
             settings: match.settings,
-            score: match.score // ✅ Include current score so joining user sees it
+            score: match.score // Include current score so joining user sees it
           },
         });
 
@@ -214,7 +216,7 @@ export function setupMatchSocket(io: Server): void {
     socket.on("updateMatch", async (matchId: string, data: updateMatchData, callback) => {
       try {
         
-        // ✅ AWAIT the async function
+        //  AWAIT the async function
         const updatedMatch = await updateMatch(matchId, data);
         
         // Get the match code for room name
@@ -229,13 +231,13 @@ export function setupMatchSocket(io: Server): void {
         
         const roomName = `match-${match.matchCode}`;
         
-        // ✅ Emit to all users in the match room
+        //  Emit to all users in the match room
         matchNamespace.to(roomName).emit("updatedScore", {
           updatedMatch,
           score: updatedMatch?.score  // Extract score for easier access
         });
         
-        // ✅ Send callback to acknowledge the update
+        //  Send callback to acknowledge the update
         callback({
           success: true,
           message: "Score updated successfully",
@@ -265,43 +267,34 @@ export function setupMatchSocket(io: Server): void {
     socket.on("leaveMatch", async () => {
       try {
         const matchCode = socket.data.matchCode;
+        const visitorId = socket.data.visitorId;  //  Add this
         const displayName = socket.data.displayName;
 
-        if (!matchCode) {
-          logger("User tried to leave without joining");
+        if (!matchCode || !visitorId) {
+          logger("User tried to leave without proper match data");
           return;
         }
 
-        // Find match
         const match = await Match.findOne({ matchCode });
         if (match) {
-          // Remove user from users list
-         match.users.pull({ visitorId: socket.id });
-
-          // If no users left, delete match (cleanup)
+          match.users.pull({ visitorId: visitorId });  //  Use visitorId
+          
           if (match.users.length === 0) {
             await Match.deleteOne({ matchCode });
-            logger(`Match deleted (no users left): ${matchCode}`);
           } else {
             await match.save();
-
-            // Notify remaining users
             const roomName = `match-${matchCode}`;
             matchNamespace.to(roomName).emit("userLeft", {
               leftUser: displayName,
               totalUsers: match.users.length,
               allUsers: match.users,
             });
-
-            logger(`${displayName} left match: ${matchCode}, ${match.users.length} users remaining`);
           }
         }
-
-        // Leave socket from room
         socket.leave(`match-${matchCode}`);
-        socket.data.matchCode = null;
+        console.log(`${displayName} left match: ${matchCode}`);
       } catch (error) {
-        if (process.env.NODE_ENV === "development") console.error("[MATCH] Leave match error:", error);
+        console.error("[MATCH] Leave match error:", error);
       }
     });
 
@@ -311,33 +304,56 @@ export function setupMatchSocket(io: Server): void {
      * Runs when user closes browser or loses connection
      * Automatically cleans up their match
      */
+   socket.on("reconnectRoom", async ({ visitorId }) => {
+  const user = await Match.findOne({ "users.visitorId": visitorId });
+  if (user) {
+    const matchCode = user.matchCode;
+    const roomName = `match-${matchCode}`;
+    const displayName = user.users.find((u) => u.visitorId === visitorId)?.displayName || "Unknown";
+    const isAdmin = user.users.find((u) => u.visitorId === visitorId)?.role === "admin";
+    socket.join(roomName);
+    socket.data.visitorId = visitorId;
+    socket.data.matchCode = matchCode;
+    socket.data.displayName = displayName;
+    socket.data.isAdmin = isAdmin;
+    
+    //  Send current match state back to the reconnected user
+    socket.emit("matchStateUpdate", {
+      matchCode: user.matchCode,
+      createdBy: user.createdBy,
+      users: user.users,
+      settings: user.settings,
+      score: user.score,  //  Send current score
+      isAdmin: isAdmin,
+      totalUsers: user.users.length,
+    });
+    
+    //  Notify other users that someone reconnected
+    socket.to(roomName).emit("userJoined", {
+      newUser: {
+        visitorId,
+        displayName,
+        role: user.users.find((u) => u.visitorId === visitorId)?.role || "viewer",
+      },
+      totalUsers: user.users.length,
+      allUsers: user.users,
+    });
+    
+    console.log(`[RECONNECT] ${visitorId} reconnected to match ${matchCode}`);
+  } else {
+    console.log(`[RECONNECT] User ${visitorId} not found in any match`);
+  }
+});
+
     socket.on("disconnect", async () => {
       try {
         const matchCode = socket.data.matchCode;
         const displayName = socket.data.displayName;
 
-        if (matchCode) {
-          const match = await Match.findOne({ matchCode });
-          if (match) {
-            // Remove from users list
-            match.users.pull({ visitorId: socket.id });
-
-            // Cleanup: if no users, delete match
-            if (match.users.length === 0) {
-              await Match.deleteOne({ matchCode });
-              logger(`Match deleted on disconnect (no users): ${matchCode}`);
-            } else {
-              await match.save();
-              const roomName = `match-${matchCode}`;
-              matchNamespace.to(roomName).emit("userLeft", {
-                leftUser: displayName,
-                totalUsers: match.users.length,
-                allUsers: match.users,
-              });
-            }
-          }
-        }
-
+        //  DON'T remove user from match on disconnect
+        // This allows them to rejoin on reconnect (page refresh, network hiccup)
+        // Users are only removed on explicit leaveMatch or after a timeout
+        
         logger(`User disconnected: ${socket.id} (${displayName})`);
       } catch (error) {
         if (process.env.NODE_ENV === "development") console.error("[MATCH] Disconnect error:", error);
