@@ -22,6 +22,6 @@ export function getMatchByCode(code: string) {
 }
 
 export function updateMatch(id: string, updateData: any) {
-  return Match.findByIdAndUpdate(id, updateData, { new: true });
+  return Match.findByIdAndUpdate(id, updateData, {  returnDocument: 'after' });
 }
  

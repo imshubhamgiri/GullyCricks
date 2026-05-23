@@ -94,10 +94,14 @@ export async function updateMatch(matchId: string, data: updateMatchData) {
     newBall.isExtra = match.settings!.wideRuns===1 ? true : false;
     newBall.ball = score.balls; 
   } else if (event.type === "noBall") {
-    newBall.runs = event.runs || match.settings!.noBallRuns || 1;
+    newBall.runs = event.runs === -1 ? 0 : (event.runs || match.settings!.noBallRuns || 1);
     newBall.countedBall = false;
-    newBall.isExtra =match.settings!.noBallRuns ==1 ? true : false;
+    newBall.isExtra = match.settings!.noBallRuns === 1 ? true : false;
     newBall.ball = score.balls;
+    // Handle run out on no ball - mark with special wicket flag
+    if (event.runs === -1) {
+      (newBall as any).isWicket = true;
+    }
   } else if (event.type === "run") {
     newBall.countedBall = true;
     newBall.isExtra = false;

@@ -5,6 +5,7 @@ import mongoose from "mongoose";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { setupMatchSocket } from "./socket/matchSocket.js";
+import devLogger from "./logger/devLogger.js";
 
 const PORT = Number(process.env.PORT) || 5000;
 const server = createServer(app);
@@ -16,7 +17,7 @@ const io = new Server(server, {
 });
 const MONGO_URI = process.env.MONGO_URI;
 
-// ✅ OPTIMIZED: Dev-only logger
+// OPTIMIZED: Dev-only logger
 const logger = (message: string, data?: any) => {
   if (process.env.NODE_ENV === "development") {
     console.log(`[SERVER] ${message}`, data || "");
@@ -33,45 +34,38 @@ const HOST = (): string => {
 async function startServer(): Promise<void> {
   await connectDB(MONGO_URI);
 
-  // Setup match socket handlers (namespace: /matches)
   setupMatchSocket(io);
 
-  // Default namespace connection (optional - for general events)
   io.on("connection", (socket) => {
-    logger(`User connected: ${socket.id}`);
+    devLogger.info(`User connected to default namespace`, { socketId: socket.id });
     socket.on("disconnect", () => {
-      logger(`User disconnected: ${socket.id}`);
+      devLogger.info(`User disconnected from default namespace`, { socketId: socket.id });
     });
   });
 
   server.listen(PORT, HOST(), () => {
-    logger(`Server is running on port ${PORT}`);
+    devLogger.info(`Server started`, { port: PORT, host: HOST(), env: process.env.NODE_ENV });
   });
 
   process.on("SIGINT", async () => {
-    logger("SIGINT received, shutting down gracefully...");
-    
-    // Close all active connections immediately
+    devLogger.info(`Graceful shutdown initiated`);
     server.closeAllConnections();
-    
-    // Close the server
     server.close(async () => {
-      logger("Server closed.");
-      
+      devLogger.info(`Server closed`);
       try {
         await mongoose.connection.close();
-        logger("MongoDB connection closed.");
+        devLogger.info(`MongoDB disconnected`);
         process.exit(0);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unknown error";
-        console.error("Error closing MongoDB:", message);
+        devLogger.error(`Failed to close MongoDB`, {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
         process.exit(1);
       }
     });
-    
-    // Force exit after 10 seconds if still running
+
     setTimeout(() => {
-      console.error("\nForce exit - graceful shutdown timeout");
+      devLogger.error(`Graceful shutdown timeout - forcing exit`);
       process.exit(1);
     }, 10000);
   });

@@ -22,8 +22,15 @@ export default function recalculateScore(ballHistory: IBallEvent[], settings: IS
       runs += ball.runs || settings.wideRuns || 1;
       currentOverBalls.push("Wd");
     } else if (ball.type === "noBall") {
+      // Handle no ball with potential wicket
+      if ((ball as any).isWicket) {
+        wickets += 1;
+        currentOverBalls.push("Nb-W");
+      } else {
+        const noBallRuns = ball.runs || settings.noBallRuns || 1;
+        currentOverBalls.push(`Nb-${noBallRuns}`);
+      }
       runs += ball.runs || settings.noBallRuns || 1;
-      currentOverBalls.push("Nb");
     }
 
     if (validBalls > 0 && validBalls % 6 === 0 && ["wicket", "run", "dot"].includes(ball.type)) {
