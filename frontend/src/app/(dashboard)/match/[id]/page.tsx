@@ -1,44 +1,34 @@
 "use client";
+
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
+import {  useCallback, useState } from "react";
 import { useSocket } from "@/context/SocketContext";
+import {
+  useMatchData,
+  useMatchSocket,
+  useCopyToClipboard,
+} from "@/hooks";
+import {
+  LoadingState,
+  ErrorState,
+} from "@/components/ui";
+import {
+  Scoreboard,
+  MatchInfo,
+  UsersPanel,
+  DashboardHeader,
+  BallHistory,
+} from "@/components/dashboard";
 
 /**
- * MATCH EVENT PAGE: /match/[id] (OPTIMIZED)
+ * MATCH EVENT PAGE: /match/[id]
  * 
- * Real-time match scoreboard where:
- * - Admin sees controls to update score
+ * Real-time match scoreboard with:
+ * - Admin controls to update score
  * - Viewers see live updates
- * - Everyone sees live user list
- * 
- * Socket.io events listened:
- * - userJoined: Someone joined the room
- * - userLeft: Someone left the room
- * - userListUpdated: User list changed
- * - scoreUpdated: (future) Score was updated
- * 
- * Optimizations:
- * - useCallback for event handlers (prevents recreation on every render)
- * - Removed console.logs (use dev tools instead)
- * - Lazy sessionStorage parsing
+ * - Live user list and collaboration
  */
-
-interface User {
-  visitorId: string;
-  displayName: string;
-  role: "admin" | "viewer";
-}
-
-interface MatchData {
-  matchCode: string;
-  createdBy: string;
-  users: User[];
-  settings?: {
-    overs: number;
-    players: number;
-  };
-}
 
 export default function MatchPage() {
   const params = useParams();
@@ -46,400 +36,193 @@ export default function MatchPage() {
   const matchId = params.id as string;
   const { socket, isConnected } = useSocket();
 
-  // Match State
-  const [match, setMatch] = useState<MatchData | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Custom hooks
+  const matchData = useMatchData(matchId);
+  const { copied, handleCopy } = useCopyToClipboard();
+  const [scoreUpdateError, setScoreUpdateError] = useState<string | null>(null);
+  const [updatingScore, setUpdatingScore] = useState(false);
 
-  // Score State (for future use)
-  const [score, setScore] = useState(0);
-  const [wickets, setWickets] = useState(0);
-  const [overs, setOvers] = useState(0);
-
-  // Event handlers wrapped in useCallback to prevent recreation
+  // Socket event handlers
   const handleUserJoined = useCallback(
-    (data: { newUser: User; totalUsers: number; allUsers: User[] }) => {
-      setUsers(data.allUsers);
+    (data: { newUser: any; totalUsers: number; allUsers: any[] }) => {
+      matchData.updateUsers(data.allUsers);
     },
-    []
+    [matchData]
   );
 
   const handleUserLeft = useCallback(
-    (data: { leftUser: string; totalUsers: number; allUsers: User[] }) => {
-      setUsers(data.allUsers);
+    (data: { leftUser: string; totalUsers: number; allUsers: any[] }) => {
+      matchData.updateUsers(data.allUsers);
     },
-    []
+    [matchData]
   );
 
   const handleUserListUpdated = useCallback(
-    (data: { users: User[]; totalUsers: number }) => {
-      setUsers(data.users);
+    (data: { users: any[]; totalUsers: number }) => {
+      matchData.updateUsers(data.users);
     },
-    []
+    [matchData]
   );
-  const updateScore = useCallback(
+
+  const handleScoreUpdated = useCallback(
     (data: any) => {
-      console.log("Score update received:", data);
-      // ✅ Extract score from the correct path
       if (data.score) {
-        setScore(data.score.runs || 0);
-        setWickets(data.score.wickets || 0);
-        setOvers(data.score.overs || 0);
+        matchData.updateScore(
+          data.score.runs || 0,
+          data.score.wickets || 0,
+          data.score.overs || 0
+        );
+      }
+      // Update ball history from updatedMatch
+      if (data.updatedMatch) {
+        matchData.updateBallHistory(
+          data.updatedMatch.ballHistory || [],
+          data.updatedMatch.score?.currentOverBalls || []
+        );
       }
     },
-    []
-  )
+    [matchData]
+  );
 
-  //  Handle state update from reconnection
   const handleMatchStateUpdate = useCallback(
     (data: any) => {
-      console.log("Match state update received:", data);
-      setUsers(data.users || []);
-      if (data.score) {
-        setScore(data.score.runs || 0);
-        setWickets(data.score.wickets || 0);
-        setOvers(data.score.overs || 0);
-      }
-      // Update sessionStorage with fresh data
-      sessionStorage.setItem(`match-${matchId}`, JSON.stringify({
+      matchData.updateMatchData({
         matchCode: data.matchCode,
         createdBy: data.createdBy,
-        users: data.users,
+        users: data.users || [],
         settings: data.settings,
         score: data.score,
-        isAdmin: data?.isAdmin,
-      }));
+        isAdmin: data.isAdmin,
+        ballHistory: data.ballHistory || [],
+        currentOverBalls: data.score?.currentOverBalls || [],
+      });
     },
-    [matchId]
-  )
+    [matchData]
+  );
 
-  /**
-   * Effect 1: Load match data from sessionStorage IMMEDIATELY
-   * This should not wait for socket connection
-   *  OPTIMIZED: Load data on mount, don't wait for socket
-   */
-  useEffect(() => {
-    // Load match data from sessionStorage immediately
-    const storedMatch = sessionStorage.getItem(`match-${matchId}`);
-    if (storedMatch) {
-      try {
-        const matchData = JSON.parse(storedMatch);
-        setMatch(matchData);
-        setUsers(matchData.users || []);
-        setIsAdmin(matchData.isAdmin);
-        //  Load initial score from sessionStorage
-        if (matchData.score) {
-          setScore(matchData.score.runs || 0);
-          setWickets(matchData.score.wickets || 0);
-          setOvers(matchData.score.overs || 0);
-        }
-      } catch {
-        setError("Error loading match data");
-      }
-    } else {
-      setError(
-        "Match not found. Please go back and create/join a new match."
-      );
-    }
-    setLoading(false);
-  }, [matchId]);
-
-  /**
-   * Effect 2: Register Socket.io listeners AFTER data is loaded
-   * This effect runs after socket connects, not blocking initial render
-   */
-  useEffect(() => {
-    if (!socket || !isConnected || !matchId) return;
-
-    socket.on("userJoined", handleUserJoined);
-    socket.on("userLeft", handleUserLeft);
-    socket.on("userListUpdated", handleUserListUpdated);
-    socket.on("updatedScore", updateScore);
-    socket.on("matchStateUpdate", handleMatchStateUpdate);  // ✅ Add this
-
-    // Cleanup listeners on unmount
-    return () => {
-      socket.off("userJoined", handleUserJoined);
-      socket.off("userLeft", handleUserLeft);
-      socket.off("userListUpdated", handleUserListUpdated);
-      socket.off("updatedScore", updateScore);
-      socket.off("matchStateUpdate", handleMatchStateUpdate);  // ✅ Clean up this
-    };
-  }, [socket, isConnected, matchId, handleUserJoined, handleUserLeft, handleUserListUpdated, updateScore, handleMatchStateUpdate]);
-
-  //working copy button
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async (text:string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000); // Reset after 2 seconds
-    } catch (err) {
-      console.error('Failed to copy text: ', err);
-    }
-  };
+  // Initialize socket listeners
+  useMatchSocket({
+    matchId,
+    isAdmin: matchData.isAdmin,
+    onUserJoined: handleUserJoined,
+    onUserLeft: handleUserLeft,
+    onUserListUpdated: handleUserListUpdated,
+    onScoreUpdated: handleScoreUpdated,
+    onMatchStateUpdate: handleMatchStateUpdate,
+  });
 
 
-  /**
-   * Handle Leave Match
-   * Emits leaveMatch event to server
-   */
-  const handleLeaveMatch = () => {
-    if (socket && isConnected) {
-      socket.emit("leaveMatch");
-      // In a real app, redirect to home page
-      router.push("/");
+  // Handle score update
+  const handleScoreUpdate = (type: string, runs: number) => {
+    setScoreUpdateError(null);
+    setUpdatingScore(true);
 
-    }
-  };
-
-  const handleScoreUpdate = (type: string, runs: number): void => {
     const visitorId = localStorage.getItem("visitorId") || "";
     const payload = {
       visitorId,
-      event: { type, runs }
+      event: { type, runs },
     };
 
-    try {
-      if (socket && isConnected) {
-        // ✅ Emit with callback to get acknowledgment
-        socket.emit("updateMatch", matchId, payload, (response: any) => {
-          if (response.success) {
-            console.log("✅ Score update confirmed by server", response);
-            const updatedScore = response.updatedMatch.score;
-            setScore(updatedScore.runs || 0);
-            setWickets(updatedScore.wickets || 0);
-            setOvers(updatedScore.overs || 0);
-
-          } else {
-            setError(`Update failed: ${response.error}`);
-            console.error("Score update failed:", response.error);
-          }
-        });
-        console.log("Score update emitted:", payload, "for match:", matchId);
-      } else {
-        setError("Cannot update score: Not connected to server");
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Unknown error");
-      console.error("Error emitting score update:", error);
+    if (!socket || !isConnected) {
+      setScoreUpdateError("Not connected to server");
+      setUpdatingScore(false);
+      return;
     }
+
+    socket.emit("updateMatch", matchId, payload, (response: any) => {
+      setUpdatingScore(false);
+      if (response.success) {
+        matchData.updateScore(
+          response.updatedMatch.score.runs || 0,
+          response.updatedMatch.score.wickets || 0,
+          response.updatedMatch.score.overs || 0
+        );
+        // Update ball history from response
+        matchData.updateBallHistory(
+          response.updatedMatch.ballHistory || [],
+          response.updatedMatch.score?.currentOverBalls || []
+        );
+      } else {
+        setScoreUpdateError(response.error || "Failed to update score");
+      }
+    });
+  };
+
+  // Handle leave match
+  const handleLeaveMatch = () => {
+    if (socket && isConnected) {
+      socket.emit("leaveMatch");
+    }
+    router.push("/");
+  };
+
+  // Loading state
+  if (matchData.loading) {
+    return <LoadingState message="Loading match..." />;
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-400 mx-auto mb-4"></div>
-          <p className="text-white">Loading match...</p>
-        </div>
-      </div>
-    );
+  // Error state
+  if (matchData.error) {
+    return <ErrorState error={matchData.error} />;
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-8 max-w-md">
-          <p className="text-red-200">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!match) {
-    return (
-      <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-white">No match found</p>
-        </div>
-      </div>
-    );
+  // No match found
+  if (!matchData.match) {
+    return <ErrorState error="No match found" />;
   }
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Header */}
-      <div className="border-b border-amber-500/20 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-linear-to-r from-amber-400 to-amber-300">
-                Match {match.matchCode}
-              </h1>
-              <p className="text-slate-400 text-sm mt-2">
-                Created by: {match.createdBy}
-              </p>
-            </div>
-            <div className="text-right">
-              <div className="flex items-center gap-2 mb-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"
-                    }`}
-                ></div>
-                <span className="text-xs text-slate-400">
-                  {isConnected ? "Connected" : "Disconnected"}
-                </span>
-              </div>
-              {isAdmin && (
-                <span className="inline-block bg-amber-500/20 text-amber-200 px-3 py-1 rounded-full text-xs">
-                  Admin
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <DashboardHeader
+        matchCode={matchData.match.matchCode}
+        createdBy={matchData.match.createdBy}
+        isAdmin={matchData.isAdmin}
+        isConnected={isConnected}
+      />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid md:grid-cols-3 gap-8">
-          {/* Scoreboard */}
+          {/* Left Column: Scoreboard */}
           <div className="md:col-span-2">
-            <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/50 rounded-2xl p-8 shadow-2xl mb-8">
-              <h2 className="text-2xl font-bold text-white mb-8">Scoreboard</h2>
+            <Scoreboard
+              score={matchData.score}
+              wickets={matchData.wickets}
+              overs={matchData.overs}
+              isAdmin={matchData.isAdmin}
+              loading={updatingScore}
+              onScoreUpdate={handleScoreUpdate}
+            />
 
-              {/* Score Card */}
-              <div className="grid grid-cols-4 gap-4 mb-8">
-                <div className="bg-linear-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-center">
-                  <div className="text-4xl font-bold text-white">{score}</div>
-                  <div className="text-blue-200 text-sm mt-2">Runs</div>
-                </div>
-                <div className="bg-linear-to-br from-red-600 to-red-700 rounded-xl p-6 text-center">
-                  <div className="text-4xl font-bold text-white">{wickets}</div>
-                  <div className="text-red-200 text-sm mt-2">Wickets</div>
-                </div>
-                <div className="bg-linear-to-br from-purple-600 to-purple-700 rounded-xl p-6 text-center">
-                  <div className="text-4xl font-bold text-white">{overs}</div>
-                  <div className="text-purple-200 text-sm mt-2">Overs</div>
-                </div>
-                <div className="bg-linear-to-br from-amber-600 to-amber-700 rounded-xl p-6 text-center">
-                  <div className="text-4xl font-bold text-white">
-                    {wickets === 0 ? score : "-"}
-                  </div>
-                  <div className="text-amber-200 text-sm mt-2">Rate</div>
-                </div>
-              </div>
+            <MatchInfo
+              totalOvers={matchData.match.settings?.overs || 5}
+              totalPlayers={matchData.match.settings?.players || 11}
+            />
 
-              {/* Admin Controls (for Step 2) */}
-              {isAdmin && (
-                <div className="bg-slate-900/50 border border-slate-700 rounded-lg p-6">
-                  <h3 className="text-white font-bold mb-4">Update Score</h3>
-                  <div className="grid grid-cols-3 gap-3">
-                    <button onClick={() => handleScoreUpdate("run", 1)}
-                     className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-lg transition">
-                      +1 Run
-                    </button>
-                    <button onClick={() => handleScoreUpdate("run", 2)}
-                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg transition">
-                      +2 Runs
-                    </button>
-                    <button onClick={() => handleScoreUpdate("run", 3)}
-                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg transition">
-                      +3 Runs
-                    </button>
-                    <button onClick={() => handleScoreUpdate("wicket", 0)}
-                     className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition col-span-2">
-                      Wicket
-                    </button>
-                    <button onClick={() => handleScoreUpdate("reset", 0)}
-                     className="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-lg transition">
-                      Reset
-                    </button>
-                  </div>
-                  <p className="text-slate-400 text-xs mt-3">
-                    Note: Admin score updates will broadcast to all viewers in
-                    real-time! ⚡
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Match Info */}
-            <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/50 rounded-2xl p-8 shadow-2xl">
-              <h3 className="text-xl font-bold text-white mb-4">Match Info</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-slate-400 text-sm">Total Overs</p>
-                  <p className="text-white font-bold">
-                    {match.settings?.overs || 5}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-slate-400 text-sm">Players</p>
-                  <p className="text-white font-bold">
-                    {match.settings?.players || 11}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <BallHistory
+              ballHistory={matchData.ballHistory}
+              currentOverBalls={matchData.currentOverBalls}
+            />
           </div>
 
-          {/* Users Panel */}
+          {/* Right Column: Users Panel */}
           <div className="md:col-span-1">
-            <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700/50 rounded-2xl p-8 shadow-2xl sticky top-8">
-              <h3 className="text-xl font-bold text-white mb-4">
-                Users ({users.length})
-              </h3>
-
-              {/* User List */}
-              <div className="space-y-3 mb-6 max-h-64 overflow-y-auto">
-                {users.map((user) => (
-                  <div
-                    key={user.visitorId}
-                    className="bg-slate-900/50 border border-slate-700 rounded-lg p-3 flex items-center justify-between"
-                  >
-                    <div>
-                      <p className="text-white font-medium text-sm">
-                        {user.displayName}
-                      </p>
-                      {user.role === "admin" && (
-                        <p className="text-amber-400 text-xs">Admin</p>
-                      )}
-                      {user.role === "viewer" && (
-                        <p className="text-slate-400 text-xs">Viewer</p>
-                      )}
-                    </div>
-                    <div
-                      className={`w-2 h-2 rounded-full ${user.role === "admin" ? "bg-amber-400" : "bg-green-400"
-                        }`}
-                    ></div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Leave Button */}
-              <button
-                onClick={handleLeaveMatch}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition"
-              >
-                Leave Match
-              </button>
-
-              {/* Match Code Copy */}
-              <div className="mt-4 bg-slate-900/50 rounded-lg p-3">
-                <p className="text-slate-400 text-xs mb-2">Share this code:</p>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-slate-800 rounded px-2 py-1">
-                    <p className="text-white font-mono text-lg">
-                      {match.matchCode}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleCopy(match.matchCode)}
-                    className={`${copied ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-amber-500 hover:bg-amber-600'
-                      } text-white px-3 py-1 rounded text-sm transition`}
-                  >
-                    {copied ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-            </div>
+            <UsersPanel
+              users={matchData.users}
+              matchCode={matchData.match.matchCode}
+              onLeaveMatch={handleLeaveMatch}
+              onCopyCode={handleCopy}
+              copied={copied}
+            />
           </div>
         </div>
+
+        {/* Score update error */}
+        {scoreUpdateError && (
+          <div className="mt-4 bg-red-900/20 border border-red-500/50 rounded-lg p-3 text-red-200 text-sm">
+            {scoreUpdateError}
+          </div>
+        )}
       </div>
     </div>
   );
