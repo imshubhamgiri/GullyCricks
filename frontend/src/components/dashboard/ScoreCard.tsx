@@ -15,8 +15,8 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({
   textColor,
 }) => {
   return (
-    <div className={`${bgColor} rounded-xl p-6 text-center`}>
-      <div className="text-4xl font-bold text-white">{value}</div>
+    <div className={`${bgColor} rounded-xl p-6 flex flex-col items-center text-center`}>
+      <div className="text-3xl md:text-4xl font-bold text-white">{value}</div>
       <div className={`${textColor} text-sm mt-2`}>{label}</div>
     </div>
   );
