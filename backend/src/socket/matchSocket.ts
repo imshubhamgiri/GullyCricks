@@ -1,5 +1,5 @@
 import { Server, Socket } from "socket.io";
-import socketRouter from "./router.js";
+// import socketRouter from "./router.js";
 import { handleConnection } from "./handlers/connection.js";
 import { handleDisconnect } from "./handlers/disconnect.js";
 import { handleCreateMatch } from "./events/createMatch.js";
@@ -24,15 +24,7 @@ export function setupMatchSocket(io: Server): void {
   const matchNamespace = io.of("/matches");
 
   matchNamespace.on("connection", (socket: Socket) => {
-    // Handle connection
     handleConnection(socket);
-
-    // Register all events from router (similar to app.get, app.post, etc.)
-    // Object.entries(socketRouter).forEach(([eventName, handler]) => {
-    //   socket.on(eventName, (data, callback) => {
-    //     handler(socket, matchNamespace, data, callback);
-    //   });
-    // });
 
 
     // Manually register createMatch for now to ensure it's working before we add more events
