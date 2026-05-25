@@ -123,7 +123,7 @@ export default function Home() {
   /**
    * Handle Join Match
    */
-  const handleJoinMatch = async (e: React.FormEvent) => {
+  const handleJoinMatch = async (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     joinFormState.clearError();
     const visitorId = createVisitorId();

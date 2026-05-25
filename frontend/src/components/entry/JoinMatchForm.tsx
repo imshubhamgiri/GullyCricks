@@ -8,7 +8,7 @@ interface JoinMatchFormProps {
   error: string | null;
   onMatchCodeChange: (value: string) => void;
   onPlayerNameChange: (value: string) => void;
-  onSubmit: (e: React.FormEvent) => void;
+  onSubmit: (e: React.SubmitEvent<HTMLFormElement>) => void;
   onCancel: () => void;
 }
 
