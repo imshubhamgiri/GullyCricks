@@ -202,6 +202,7 @@ export default function MatchPage() {
             <BallHistory
               ballHistory={matchData.ballHistory}
               currentOverBalls={matchData.currentOverBalls}
+              totalOvers = {matchData.match.settings?.overs || 5}
             />
           </div>
 
