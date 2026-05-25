@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
 interface Ball {
   type: "dot" | "run" | "wicket" | "wide" | "noBall";
@@ -9,6 +9,7 @@ interface Ball {
 interface BallHistoryProps {
   ballHistory?: Ball[];
   currentOverBalls?: string[];
+  totalOvers?: number;
 }
 
 /**
@@ -18,10 +19,12 @@ interface BallHistoryProps {
 export const BallHistory: React.FC<BallHistoryProps> = ({
   ballHistory = [],
   currentOverBalls = [],
+  totalOvers 
 }) => {
   const [currentOverIndex, setCurrentOverIndex] = useState<number | null>(null);
-
+  const [currentOver, setCurrentOver] = useState(1);
   // Group balls into overs
+  
   const overs = useMemo(() => {
     if (ballHistory.length === 0) return [];
 
@@ -49,6 +52,15 @@ export const BallHistory: React.FC<BallHistoryProps> = ({
     return overGroups;
   }, [ballHistory]);
 
+
+  useEffect(() => {
+  // Calculate number of completed overs
+  const completedOvers = overs.length;
+  if (completedOvers > 0) {
+    setCurrentOver(completedOvers+1);
+  }
+}, [overs]);
+
   // Get color for ball display
   const getBallColor = (ball: string): string => {
     if (ball === "W") return "#e03131"; // Red for wicket
@@ -59,7 +71,8 @@ export const BallHistory: React.FC<BallHistoryProps> = ({
       return "#e8590c"; // Orange for no ball with runs
     }
     if (ball === "4" || ball === "6") return "#1971c2"; // Blue for boundaries
-    return "#333"; // Dark for dots and other runs
+    if(ball === "0")  return "#333"; // Dark for dots and other runs
+    return "#1971c2"; // Default blue for runs 
   };
 
   // Handle navigation
@@ -94,7 +107,7 @@ export const BallHistory: React.FC<BallHistoryProps> = ({
         <h3 className="text-xl font-bold text-white">Over History</h3>
         {overs.length > 0 && (
           <span className="text-sm text-slate-400">
-            Over {displayOverNumber} / {overs.length}
+            Over  {currentOver} / {totalOvers || "?"}
           </span>
         )}
       </div>
@@ -185,7 +198,7 @@ export const BallHistory: React.FC<BallHistoryProps> = ({
                     : "bg-slate-700 text-slate-300 hover:bg-slate-600"
                 }`}
               >
-                {idx + 1}
+                {idx + 1} 
               </button>
             ))}
             <button
@@ -197,7 +210,7 @@ export const BallHistory: React.FC<BallHistoryProps> = ({
               }`}
               title="Current Over"
             >
-              •
+              {currentOver}
             </button>
           </div>
 
@@ -214,7 +227,8 @@ export const BallHistory: React.FC<BallHistoryProps> = ({
       {/* Empty State */}
       {overs.length === 0 && currentOverBalls.length === 0 && (
         <div className="text-center py-8">
-          <p className="text-slate-400 text-sm">
+          <p className="text-red-400 text-sm">
+           <p>Pehla ball ka intezaar hai...</p> 
             No balls bowled yet. Start the match!
           </p>
         </div>
