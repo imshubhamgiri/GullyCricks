@@ -15,14 +15,17 @@ GullyCricks is a full-stack application designed to digitize the experience of m
 ### ✅ Implemented
 - **Real-time Scorecard Updates** - WebSocket-based live score synchronization
 - **Match Management** - Create and manage cricket matches
-- **User Management** - Multiple user roles and authentication
+- **User Roles** - Admin and viewer roles for match participation
 - **Dashboard Interface** - Next.js-based responsive UI for desktop and mobile
 - **Match Joining** - Users can join matches using unique match codes
 - **Score Tracking** - Real-time updates for runs, wickets, and match status
+- **Ball-by-Ball History** - Over navigation with visual ball indicators (dot, runs, wicket, wide, no-ball)
+- **Reconnect Support** - Auto rejoin to match room on socket reconnect
+- **Admin-Only Scoring** - Server validates admin role before score updates
 
 ### 🔄 In Development
 - Error handling layer for socket events
-- Authentication & authorization for socket connections
+- Authentication & authorization for socket connections (beyond local visitorId)
 - Rate limiting to prevent abuse
 - Match history and statistics
 - Advanced filtering and search
@@ -34,17 +37,18 @@ GullyCricks is a full-stack application designed to digitize the experience of m
 ### Backend
 - **Runtime:** Node.js
 - **Language:** TypeScript
-- **Framework:** Express.js
-- **Database:** MongoDB
+- **Framework:** Express.js (v5)
+- **Database:** MongoDB (Mongoose)
 - **Real-time Communication:** Socket.IO
-- **Logging:** Custom logger (dev/production modes)
+- **Logging:** Winston-based logger (dev/production modes)
 - **Utilities:** Rate limiting, match code generation, score recalculation
+- **Views:** EJS (lightweight server rendering)
 
 ### Frontend
-- **Framework:** Next.js 14+
+- **Framework:** Next.js (v16)
 - **Language:** TypeScript
-- **UI Library:** React
-- **Styling:** CSS with PostCSS
+- **UI Library:** React (v19)
+- **Styling:** Tailwind CSS v4 + PostCSS
 - **Real-time:** Socket.IO Client
 - **Context API:** Global socket state management
 - **Linting:** ESLint
@@ -75,20 +79,24 @@ GullyCricks/
 │   │   │   └── userService.ts
 │   │   ├── socket/                # Real-time communication
 │   │   │   ├── matchSocket.ts     # Main socket setup
-│   │   │   ├── router.ts          # Socket event routing
 │   │   │   ├── events/            # Event-specific logic
-│   │   │   │   └── createMatch.ts
-│   │   │   └── handlers/          # Connection lifecycle
+│   │   │   │   ├── createMatch.ts
+│   │   │   │   ├── joinMatch.ts
+│   │   │   │   ├── leaveMatch.ts
+│   │   │   │   ├── reconnectRoom.ts
+│   │   │   │   └── updateMatch.ts
+│   │   │   ├── handlers/          # Connection lifecycle
 │   │   │       ├── connection.ts
 │   │   │       └── disconnect.ts
+│   │   │   ├── Types/              # Socket-specific types
+│   │   │   └── utils/
+│   │   │       └── rateLimiter.ts
 │   │   ├── routes/                # HTTP endpoints
 │   │   │   ├── matchRoutes.ts
 │   │   │   └── userRoutes.ts
 │   │   ├── middlewares/           # Express middleware
 │   │   ├── logger/                # Logging utilities
 │   │   ├── types/                 # TypeScript definitions
-│   │   ├── utils/                 # Utility functions
-│   │   │   └── rateLimiter.ts
 │   │   └── utlis/                 # Additional utilities
 │   │       ├── generateMatchCode.ts
 │   │       └── recalculateScore.ts
@@ -99,13 +107,17 @@ GullyCricks/
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── layout.tsx         # Root layout
-│   │   │   ├── page.tsx           # Home page
+│   │   │   ├── (entry)/           # Entry routes
+│   │   │   │   └── page.tsx       # Home page
 │   │   │   ├── (dashboard)/       # Dashboard routes
 │   │   │   │   └── match/[id]/page.tsx
 │   │   │   ├── ClientLayout.tsx   # Client-side wrapper
 │   │   │   └── globals.css
 │   │   ├── context/
 │   │   │   └── SocketContext.tsx  # Global socket state
+│   │   ├── components/
+│   │   │   ├── dashboard/
+│   │   │   │   └── BallHistory.tsx
 │   │   ├── lib/
 │   │   │   └── apiClient.ts       # HTTP client utilities
 │   │   └── ...
@@ -141,7 +153,7 @@ GullyCricks/
    npm install
    
    # Create .env file with:
-   # DATABASE_URL=your_mongodb_connection_string
+   # MONGO_URI=your_mongodb_connection_string
    # PORT=5000
    # NODE_ENV=development
    
@@ -154,7 +166,7 @@ GullyCricks/
    npm install
    
    # Create .env.local file with:
-   # NEXT_PUBLIC_SOCKET_URL=http://localhost:5000
+   # NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
    
    npm run dev    # Development mode on port 3000
    ```
@@ -178,10 +190,10 @@ npm run test
 
 ## Current Development Focus
 
-### Critical Issues Being Addressed (May 22, 2026)
+### Critical Issues Being Addressed (May 27, 2026)
 
 1. **Error Handling Layer** - Implementing centralized socket error handling
-2. **Authentication & Authorization** - Adding role-based access control for socket events
+2. **Authentication & Authorization** - Hardening socket auth beyond local `visitorId`
 3. **Rate Limiting** - Preventing abuse of socket events and API endpoints
 4. **Input Validation** - Ensuring all data is validated before processing
 
@@ -194,7 +206,8 @@ See [SOCKET_STRUCTURE_REVIEW.md](./SOCKET_STRUCTURE_REVIEW.md) for detailed anal
 ### Real-time Architecture
 - **WebSocket Events:** Separated by feature into individual files for maintainability
 - **Connection Handlers:** Dedicated handlers for socket connection/disconnection lifecycle
-- **Event Router:** Centralized event routing with namespace organization
+- **Namespace Orchestrator:** `matchSocket.ts` registers events under `/matches`
+- **Reconnect Flow:** Client auto-emits `reconnectRoom` on socket connect
 
 ### Data Layer
 - **Repository Pattern:** Abstracted MongoDB operations for easier testing and maintenance
@@ -225,17 +238,21 @@ See [SOCKET_STRUCTURE_REVIEW.md](./SOCKET_STRUCTURE_REVIEW.md) for detailed anal
 
 ## Socket Events
 
+Namespace: `/matches`
+
 ### Emitted by Server
-- `match:created` - New match created
-- `match:updated` - Match score/status updated
-- `match:finished` - Match ended
-- `user:joined` - User joined the match
+- `userListUpdated` - Full user list after match creation
+- `userJoined` - A new user joined the match
+- `userLeft` - A user left the match
+- `updatedScore` - Match score updated
+- `matchStateUpdate` - Full match state on reconnect
 
 ### Received by Server
-- `match:create` - Request to create match
-- `match:update` - Request to update score
-- `match:join` - Join a match
-- `match:leave` - Leave a match
+- `createMatch` - Create a new match
+- `joinMatch` - Join a match by code
+- `updateMatch` - Update score (admin only)
+- `leaveMatch` - Leave a match
+- `reconnectRoom` - Rejoin match room after reconnect
 
 ---
 
@@ -260,7 +277,7 @@ Guidelines for contributing to GullyCricks:
 
 ### Socket connection issues
 - Ensure backend is running on correct port
-- Check `NEXT_PUBLIC_SOCKET_URL` in frontend `.env.local`
+- Check `NEXT_PUBLIC_BACKEND_URL` in frontend `.env.local`
 - Verify CORS settings in backend Socket.IO configuration
 
 ### Build errors
@@ -299,4 +316,4 @@ For issues, feature requests, or questions:
 
 **Happy Scoring! 🏏⚡**
 
-Last Updated: May 22, 2026
+Last Updated: May 27, 2026
