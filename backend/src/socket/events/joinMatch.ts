@@ -84,6 +84,8 @@ export async function handleJoinMatch(
         users: match.users,
         settings: match.settings,
         score: match.score,
+        ballHistory: match.ballHistory,
+        currentOverBalls: match.score?.currentOverBalls,
       },
     });
 
