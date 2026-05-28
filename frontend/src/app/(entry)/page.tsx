@@ -106,6 +106,8 @@ export default function Home() {
             noBallRuns: createFormState.formData.noBallRuns,
           },
           score: response.score,
+          ballHistory: [],
+          currentOverBalls: [],
         };
         sessionStorage.setItem(
           `match-${response.matchId}`,
@@ -166,6 +168,8 @@ export default function Home() {
             isAdmin: false,
             settings: response.match.settings,
             score: response.match.score,
+            ballHistory: response.match.ballHistory || [],
+            currentOverBalls: response.match.currentOverBalls || [],
           };
           sessionStorage.setItem(
             `match-${response.matchId}`,
